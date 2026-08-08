@@ -38,6 +38,7 @@ export function parseStmTeamSummary(html){
   const text=textFallback(html);
   const m=text.match(/2026 Salary Cap\s+\$([0-9.]+[MKB]?)\s+\d+(?:st|nd|rd|th)\s+Cap Space\s+\$([0-9.]+[MKB]?)\s+\d+(?:st|nd|rd|th)\s+Active Cap\s+\$([0-9.]+[MKB]?)\s+\d+(?:st|nd|rd|th)\s+Dead Cap\s+\$([0-9.]+[MKB]?)\s+\d+(?:st|nd|rd|th)\s+Top-51/i);
   if(!m) return null;
+  // Group 1 is cap space, 2 active cap, 3 dead cap, 4 top-51. The old code shifted these by one.
   return {capSpace:money(m[1]),activeSpend:money(m[2]),deadMoney:money(m[3]),top51Spend:money(m[4])};
 }
 async function fetchWithTimeout(url,ms=15000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{signal:c.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/4.2','accept':'text/html,application/xhtml+xml'}})}finally{clearTimeout(t)}}
