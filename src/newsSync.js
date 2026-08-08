@@ -1,75 +1,30 @@
-function getHref(a){
-  return a?.links?.web?.href || a?.links?.api?.self?.href || '';
-}
-function teamAbbrFromArticle(a){
-  const cats=Array.isArray(a?.categories)?a.categories:[];
-  for(const c of cats){
-    const abbr=c?.team?.abbreviation || c?.team?.shortDisplayName;
-    if(abbr && /^[A-Z]{2,3}$/.test(abbr)) return abbr==='WSH'?'WAS':abbr;
-  }
-  return '';
-}
+const TEAM_NAMES={
+ 'arizona cardinals':'ARI','atlanta falcons':'ATL','baltimore ravens':'BAL','buffalo bills':'BUF','carolina panthers':'CAR','chicago bears':'CHI','cincinnati bengals':'CIN','cleveland browns':'CLE','dallas cowboys':'DAL','denver broncos':'DEN','detroit lions':'DET','green bay packers':'GB','houston texans':'HOU','indianapolis colts':'IND','jacksonville jaguars':'JAX','kansas city chiefs':'KC','las vegas raiders':'LV','los angeles chargers':'LAC','los angeles rams':'LAR','miami dolphins':'MIA','minnesota vikings':'MIN','new england patriots':'NE','new orleans saints':'NO','new york giants':'NYG','new york jets':'NYJ','philadelphia eagles':'PHI','pittsburgh steelers':'PIT','san francisco 49ers':'SF','seattle seahawks':'SEA','tampa bay buccaneers':'TB','tennessee titans':'TEN','washington commanders':'WAS'
+};
+function getHref(a){return a?.links?.web?.href||a?.links?.api?.self?.href||''}
+function teamAbbrFromArticle(a){const cats=Array.isArray(a?.categories)?a.categories:[];for(const c of cats){const abbr=c?.team?.abbreviation||c?.team?.shortDisplayName;if(abbr&&/^[A-Z]{2,3}$/.test(abbr))return abbr==='WSH'?'WAS':abbr}return''}
+function teamFromText(text=''){const t=String(text).toLowerCase();for(const[name,abbr]of Object.entries(TEAM_NAMES)){if(t.includes(name))return abbr}return''}
 function classify(text=''){
-  if(/\btrade(?:d|s|ing)?|acquire(?:d|s|ing)?\b/i.test(text)) return 'TRADE';
-  if(/\bwaive(?:d|s|ing)?|release(?:d|s|ing)?|\bcut(?:s)?\b/i.test(text)) return 'RELEASE';
-  if(/\bextend(?:ed|s|ing)?|extension|contract talks?|negotiat(?:e|es|ed|ing|ions?)|in talks\b/i.test(text)) return 'CONTRACT';
-  if(/\bsign(?:ed|s|ing)?|re-sign(?:ed|s|ing)?\b/i.test(text)) return 'SIGNING';
-  if(/\bactivated|placed on (?:ir|injured reserve)|practice squad\b/i.test(text)) return 'ROSTER';
-  if(/\binjur(?:y|ed|ies)|questionable|doubtful|out for|surgery\b/i.test(text)) return 'INJURY';
-  if(/\bretir(?:e|ed|ement)\b/i.test(text)) return 'RETIREMENT';
-  if(/\bsuspend(?:ed|s|ing)?|suspension\b/i.test(text)) return 'SUSPENSION';
-  return 'NEWS';
+ if(/\btrade(?:d|s|ing)?|acquire(?:d|s|ing)?\b/i.test(text))return'TRADE';
+ if(/\bwaive(?:d|s|ing)?|release(?:d|s|ing)?|\bcut(?:s)?\b/i.test(text))return'RELEASE';
+ if(/\bextend(?:ed|s|ing)?|extension|contract talks?|negotiat(?:e|es|ed|ing|ions?)|in talks\b/i.test(text))return'CONTRACT';
+ if(/\bsign(?:ed|s|ing)?|re-sign(?:ed|s|ing)?\b/i.test(text))return'SIGNING';
+ if(/\bactivated|placed on (?:ir|injured reserve)|practice squad\b/i.test(text))return'ROSTER';
+ if(/\binjur(?:y|ed|ies)|questionable|doubtful|out for|surgery\b/i.test(text))return'INJURY';
+ if(/\bretir(?:e|ed|ement)\b/i.test(text))return'RETIREMENT';
+ if(/\bsuspend(?:ed|s|ing)?|suspension\b/i.test(text))return'SUSPENSION';
+ return'NEWS';
 }
-function tierFor(text='',type='NEWS'){
-  const t=String(text||'').toLowerCase();
-  if(type==='TRADE'||/blockbuster|record[- ]setting|highest[- ]paid|franchise quarterback|star quarterback|all-pro.*(?:trade|sign|extend|release)|pro bowl.*(?:trade|sign|extend|release)/i.test(t)) return 'MAJOR';
-  if(type==='CONTRACT'||type==='RETIREMENT'||type==='SUSPENSION'||/starter|first-round|pro bowl|all-pro|season-ending|torn acl|holdout|hold-in|requests? trade/i.test(t)) return 'IMPORTANT';
-  if(type==='SIGNING'||type==='RELEASE'||type==='INJURY') return 'IMPORTANT';
-  if(type==='ROSTER'||/practice squad|waiver|claimed|activated|elevated|depth chart/i.test(t)) return 'MINOR';
-  return 'GENERAL';
-}
-
-export async function fetchEspnNews(limit=160){
-  const url=`https://site.api.espn.com/apis/site/v2/sports/football/nfl/news?limit=${Math.max(25,Math.min(200,limit))}`;
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),10000);
-  try{
-    const res=await fetch(url,{signal:controller.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/6.4','accept':'application/json'}});
-    if(!res.ok) throw new Error(`ESPN news HTTP ${res.status}`);
-    const j=await res.json();
-    return (Array.isArray(j?.articles)?j.articles:[])
-      .filter(a=>a?.id && (a.headline || a.description))
-      .map(a=>{
-        const text=`${a.headline||''} ${a.description||''}`;
-        const type=classify(text);
-        return {
-          id:`espn-news-${a.id}`,
-          timestamp:a.published||a.lastModified||new Date().toISOString(),
-          team:teamAbbrFromArticle(a),
-          type,
-          tier:tierFor(text,type),
-          headline:a.headline||'NFL news',
-          description:a.description||'',
-          source:'ESPN News',
-          url:getHref(a)
-        };
-      });
-  } finally { clearTimeout(timer); }
-}
-
-export async function fetchEspnMoveNews(limit=160){
-  return fetchEspnNews(limit);
-}
-
-export async function syncMoveNews(state){
-  const now=new Date().toISOString();
-  const items=await fetchEspnNews(180);
-  const old=new Map((state.news||[]).map(x=>[x.id,x]));
-  for(const item of items) old.set(item.id,item);
-  state.news=[...old.values()]
-    .filter(x=>x?.id && x?.timestamp)
-    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))
-    .slice(0,500);
-  state.lastNewsSync=now;
-  return {count:items.length,stored:state.news.length,lastNewsSync:now};
-}
+function tierFor(text='',type='NEWS'){const t=String(text||'').toLowerCase();if(type==='TRADE'||/blockbuster|record[- ]setting|highest[- ]paid|franchise quarterback|star quarterback|all-pro.*(?:trade|sign|extend|release)|pro bowl.*(?:trade|sign|extend|release)/i.test(t))return'MAJOR';if(type==='CONTRACT'||type==='RETIREMENT'||type==='SUSPENSION'||/starter|first-round|pro bowl|all-pro|season-ending|torn acl|holdout|hold-in|requests? trade/i.test(t))return'IMPORTANT';if(type==='SIGNING'||type==='RELEASE'||type==='INJURY')return'IMPORTANT';if(type==='ROSTER'||/practice squad|waiver|claimed|activated|elevated|depth chart/i.test(t))return'MINOR';return'GENERAL'}
+function decodeXml(s=''){return String(s).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#8217;|&rsquo;/g,'’').replace(/&#8211;|&ndash;/g,'-')}
+function stripHtml(s=''){return decodeXml(s).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()}
+function tag(block,name){const m=String(block).match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`,'i'));return m?decodeXml(m[1]).trim():''}
+function parseRss(xml,source,prefix){const out=[];const re=/<item\b[^>]*>([\s\S]*?)<\/item>/gi;let m,i=0;while((m=re.exec(xml))){const title=stripHtml(tag(m[1],'title'));const description=stripHtml(tag(m[1],'description'));const url=stripHtml(tag(m[1],'link'));const pub=stripHtml(tag(m[1],'pubDate')||tag(m[1],'dc:date'));if(!title)continue;const timestamp=Number.isNaN(Date.parse(pub))?new Date().toISOString():new Date(pub).toISOString();const text=`${title} ${description}`,type=classify(text);out.push({id:`${prefix}-${Buffer.from((url||title).slice(0,180)).toString('base64url').slice(0,40)}-${i++}`,timestamp,team:teamFromText(text),type,tier:tierFor(text,type),headline:title,description,source,url})}return out}
+async function fetchText(url,accept='*/*',ms=12000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(url,{signal:c.signal,redirect:'follow',headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/6.5','accept':accept}});if(!r.ok)throw new Error(`${url} HTTP ${r.status}`);return await r.text()}finally{clearTimeout(t)}}
+export async function fetchEspnNews(limit=180){const url=`https://site.api.espn.com/apis/site/v2/sports/football/nfl/news?limit=${Math.max(25,Math.min(200,limit))}`;const c=new AbortController(),t=setTimeout(()=>c.abort(),10000);try{const res=await fetch(url,{signal:c.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/6.5','accept':'application/json'}});if(!res.ok)throw new Error(`ESPN news HTTP ${res.status}`);const j=await res.json();return(Array.isArray(j?.articles)?j.articles:[]).filter(a=>a?.id&&(a.headline||a.description)).map(a=>{const text=`${a.headline||''} ${a.description||''}`,type=classify(text);return{id:`espn-news-${a.id}`,timestamp:a.published||a.lastModified||new Date().toISOString(),team:teamAbbrFromArticle(a)||teamFromText(text),type,tier:tierFor(text,type),headline:a.headline||'NFL news',description:a.description||'',source:'ESPN',url:getHref(a)}})}finally{clearTimeout(t)}}
+export async function fetchCbsNews(){const url='https://www.cbssports.com/rss/headlines/nfl';return parseRss(await fetchText(url,'application/rss+xml, application/xml, text/xml'),'CBS Sports','cbs')}
+export async function fetchPftNews(){const url='https://feeds.feedburner.com/pftalk';return parseRss(await fetchText(url,'application/rss+xml, application/xml, text/xml'),'ProFootballTalk / NBC Sports','pft')}
+function normHeadline(s=''){return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
+export async function fetchAllNews(){const jobs=[['ESPN',()=>fetchEspnNews(200)],['CBS Sports',fetchCbsNews],['ProFootballTalk',fetchPftNews]];const settled=await Promise.allSettled(jobs.map(([,fn])=>fn()));const items=[],sources={};settled.forEach((r,i)=>{const name=jobs[i][0];if(r.status==='fulfilled'){sources[name]={ok:true,count:r.value.length};items.push(...r.value)}else{sources[name]={ok:false,count:0,error:String(r.reason?.message||r.reason)}}});const seen=new Set();const merged=items.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).filter(x=>{const k=normHeadline(x.headline);if(!k||seen.has(k))return false;seen.add(k);return true}).slice(0,500);if(!merged.length)throw new Error('All NFL news sources returned zero items');return{items:merged,sources}}
+export async function fetchEspnMoveNews(limit=160){return fetchEspnNews(limit)}
+export async function syncMoveNews(state){const now=new Date().toISOString();const{items,sources}=await fetchAllNews();const old=new Map((state.news||[]).map(x=>[x.id,x]));for(const item of items)old.set(item.id,item);const seen=new Set();state.news=[...old.values()].filter(x=>x?.id&&x?.timestamp).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).filter(x=>{const k=normHeadline(x.headline);if(!k||seen.has(k))return false;seen.add(k);return true}).slice(0,600);state.newsSources=sources;state.lastNewsSync=now;return{count:items.length,stored:state.news.length,sources,lastNewsSync:now}}
