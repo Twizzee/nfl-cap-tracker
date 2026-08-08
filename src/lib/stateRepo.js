@@ -11,6 +11,19 @@ const IS_DB = Boolean(DATABASE_URL);
 let sql = null;
 let initialized = false;
 
+function normalizePosition(position) {
+  const p = String(position || '').toUpperCase();
+  if (p === 'ED') return 'EDGE';
+  return position;
+}
+
+function normalizeState(state) {
+  if (Array.isArray(state?.players)) {
+    for (const player of state.players) player.position = normalizePosition(player.position);
+  }
+  return state;
+}
+
 function client() {
   if (!IS_DB) return null;
   if (!sql) {
@@ -47,7 +60,7 @@ async function ensureDb() {
 }
 
 async function seedState() {
-  return JSON.parse(await fs.readFile(LOCAL_DATA, 'utf8'));
+  return normalizeState(JSON.parse(await fs.readFile(LOCAL_DATA, 'utf8')));
 }
 
 export function storageMode() {
@@ -59,14 +72,15 @@ export async function readState() {
   await ensureDb();
   const db = client();
   const rows = await db`select data from app_state where id = 'main' limit 1`;
-  if (rows.length) return rows[0].data;
+  if (rows.length) return normalizeState(rows[0].data);
   const seed = await seedState();
   await db`insert into app_state (id, data) values ('main', ${db.json(seed)}) on conflict (id) do nothing`;
   const created = await db`select data from app_state where id = 'main' limit 1`;
-  return created[0]?.data || seed;
+  return normalizeState(created[0]?.data || seed);
 }
 
 export async function writeState(state) {
+  normalizeState(state);
   if (!IS_DB) {
     const tmp = LOCAL_DATA + '.tmp';
     await fs.writeFile(tmp, JSON.stringify(state, null, 2));
