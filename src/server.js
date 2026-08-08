@@ -16,7 +16,9 @@ function summarize(s) {
     teams: s.teams.length,
     players: s.players.filter(p => p.status !== 'removed').length,
     verified: s.players.filter(p => p.status !== 'removed' && (p.contractStatus === 'verified' || p.contractStatus === 'confirmed')).length,
+    contractTerms: s.players.filter(p => p.status !== 'removed' && p.sourceChecks?.Spotrac).length,
     freeAgents: (s.freeAgents || []).length,
+    news: (s.news || []).length,
     lastSync: s.lastSync,
     lastContractSync: s.lastContractSync,
     lastSpotracSync: s.lastSpotracSync,
@@ -26,6 +28,23 @@ function summarize(s) {
     lastFullSync: s.lastFullSync,
     storageMode: storageMode()
   };
+}
+
+function validateSync(s,result={}){
+  const active=s.players.filter(p=>p.status!=='removed');
+  const withCap=active.filter(p=>Number(p.capHit2026||0)>0).length;
+  const withTerms=active.filter(p=>p.sourceChecks?.Spotrac && (Number(p.apy||0)>0 || Number(p.totalValue||0)>0)).length;
+  const withGuaranteeSource=active.filter(p=>p.sourceChecks?.Spotrac).length;
+  const checks={
+    rosters:Boolean(result.roster?.validated) && Number(result.roster?.teamsSynced||0)>=30,
+    capTables:Number(result.stm?.teams||0)>=30 && withCap>=500,
+    contractTerms:Number(result.spotrac?.teams||0)>=25 && withTerms>=300,
+    guarantees:Number(result.spotrac?.teams||0)>=25 && withGuaranteeSource>=300,
+    news:Number(result.news?.count||0)>0 && (s.news||[]).length>0,
+    freeAgents:Number(result.freeAgents?.players||0)>=25,
+    teamTotals:Number(result.teamCaps?.teams||0)>=20
+  };
+  return {ok:Object.values(checks).every(Boolean),checks,counts:{active,withCap,withTerms,withGuaranteeSource,news:(s.news||[]).length,freeAgents:(s.freeAgents||[]).length}};
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -60,7 +79,7 @@ app.get('/api/team/:abbr', async (req, res) => {
     team,
     players: s.players.filter(p => p.team === abbr && p.status !== 'removed'),
     transactions: s.transactions.filter(t => t.team === abbr).slice(0, 100),
-    news: (s.news || []).filter(n => !n.team || n.team === abbr).slice(0, 30),
+    news: (s.news || []).filter(n => !n.team || n.team === abbr).slice(0, 50),
     summary: summarize(s)
   });
 });
@@ -84,7 +103,7 @@ async function fullSync(s) {
   const result = {};
   result.roster = await syncEspn(s).catch(e => ({ error: String(e.message || e), teamsSynced: 0, fullRosters: 0, validated: false, failures: [] }));
   await writeState(s);
-  result.news = await syncMoveNews(s).catch(e => ({ error: String(e.message || e) }));
+  result.news = await syncMoveNews(s).catch(e => ({ error: String(e.message || e), count:0 }));
   await writeState(s);
   result.stm = await syncStmLeague(s).catch(e => ({ error: String(e.message || e), teams: 0, players: 0, failures: [] }));
   await writeState(s);
@@ -97,12 +116,13 @@ async function fullSync(s) {
   result.pfn = await syncAllContracts(s).catch(e => [{ error: String(e.message || e) }]);
   await writeState(s);
   s.lastFullSync = new Date().toISOString();
+  result.validation=validateSync(s,result);
+  s.lastValidation=result.validation;
   s.syncLog = s.syncLog || [];
-  const pipelineOk = Boolean(result.roster?.validated) && Number(result.stm?.teams || 0) >= 30 && Number(result.spotrac?.teams || 0) >= 25;
   s.syncLog.unshift({
     timestamp: s.lastFullSync,
-    status: pipelineOk ? 'ok' : 'partial',
-    message: `Website pipeline: ESPN ${result.roster.teamsSynced || 0}/32 (${result.roster.fullRosters || 0} full), STM ${result.stm.teams || 0}/32 (${result.stm.players || 0} rows), Spotrac ${result.spotrac.teams || 0}/32 (${result.spotrac.players || 0} contracts), free agents ${result.freeAgents.players || 0}, PFN caps ${result.teamCaps.teams || 0}/32.`
+    status: result.validation.ok ? 'ok' : 'partial',
+    message: `Pipeline: ESPN ${result.roster.teamsSynced || 0}/32, STM ${result.stm.teams || 0}/32, Spotrac ${result.spotrac.teams || 0}/32, free agents ${result.freeAgents.players || 0}, news ${result.news.count || 0}, PFN caps ${result.teamCaps.teams || 0}/32. Validation ${result.validation.ok?'PASS':'PARTIAL'}.`
   });
   s.syncLog = s.syncLog.slice(0, 300);
   await writeState(s);
@@ -150,7 +170,9 @@ app.post('/api/sync/news', async (_req, res) => {
 
 app.get('/api/cron/sync', async (req, res) => {
   const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.authorization !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+  const secretOk=Boolean(secret) && req.headers.authorization === `Bearer ${secret}`;
+  const nativeVercelCron=String(req.headers['user-agent']||'').toLowerCase().includes('vercel-cron/1.0');
+  if (!secretOk && !nativeVercelCron) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const run = await runLockedSync();
     if (run.busy) return res.status(409).json({ error: 'Sync already running' });
