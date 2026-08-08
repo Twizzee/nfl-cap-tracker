@@ -1,5 +1,3 @@
-const MOVE_WORDS = /\b(sign(?:ed|s|ing)?|re-sign(?:ed|s|ing)?|release(?:d|s|ing)?|cut|cuts|waive(?:d|s|ing)?|claim(?:ed|s|ing)?|trade(?:d|s|ing)?|acquire(?:d|s|ing)?|extend(?:ed|s|ing)?|extension|placed on (?:ir|injured reserve)|activated|practice squad)\b/i;
-
 function getHref(a){
   return a?.links?.web?.href || a?.links?.api?.self?.href || '';
 }
@@ -14,28 +12,30 @@ function teamAbbrFromArticle(a){
 function classify(text=''){
   if(/\btrade(?:d|s|ing)?|acquire(?:d|s|ing)?\b/i.test(text)) return 'TRADE';
   if(/\bwaive(?:d|s|ing)?|release(?:d|s|ing)?|\bcut(?:s)?\b/i.test(text)) return 'RELEASE';
-  if(/\bextend(?:ed|s|ing)?|extension\b/i.test(text)) return 'EXTENSION';
+  if(/\bextend(?:ed|s|ing)?|extension|contract talks?|negotiat(?:e|es|ed|ing|ions?)|in talks\b/i.test(text)) return 'CONTRACT';
   if(/\bsign(?:ed|s|ing)?|re-sign(?:ed|s|ing)?\b/i.test(text)) return 'SIGNING';
   if(/\bactivated|placed on (?:ir|injured reserve)|practice squad\b/i.test(text)) return 'ROSTER';
+  if(/\binjur(?:y|ed|ies)|questionable|doubtful|out for|surgery\b/i.test(text)) return 'INJURY';
+  if(/\bretir(?:e|ed|ement)\b/i.test(text)) return 'RETIREMENT';
   return 'NEWS';
 }
 
-export async function fetchEspnMoveNews(limit=100){
+export async function fetchEspnNews(limit=160){
   const url=`https://site.api.espn.com/apis/site/v2/sports/football/nfl/news?limit=${Math.max(25,Math.min(200,limit))}`;
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),10000);
   try{
-    const res=await fetch(url,{signal:controller.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Lab/3.0','accept':'application/json'}});
+    const res=await fetch(url,{signal:controller.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/6.3','accept':'application/json'}});
     if(!res.ok) throw new Error(`ESPN news HTTP ${res.status}`);
     const j=await res.json();
     return (Array.isArray(j?.articles)?j.articles:[])
-      .filter(a=>MOVE_WORDS.test(`${a.headline||''} ${a.description||''}`))
+      .filter(a=>a?.id && (a.headline || a.description))
       .map(a=>({
         id:`espn-news-${a.id}`,
         timestamp:a.published||a.lastModified||new Date().toISOString(),
         team:teamAbbrFromArticle(a),
         type:classify(`${a.headline||''} ${a.description||''}`),
-        headline:a.headline||'NFL roster news',
+        headline:a.headline||'NFL news',
         description:a.description||'',
         source:'ESPN News',
         url:getHref(a)
@@ -43,12 +43,19 @@ export async function fetchEspnMoveNews(limit=100){
   } finally { clearTimeout(timer); }
 }
 
+export async function fetchEspnMoveNews(limit=160){
+  return fetchEspnNews(limit);
+}
+
 export async function syncMoveNews(state){
   const now=new Date().toISOString();
-  const items=await fetchEspnMoveNews(120);
+  const items=await fetchEspnNews(180);
   const old=new Map((state.news||[]).map(x=>[x.id,x]));
   for(const item of items) old.set(item.id,item);
-  state.news=[...old.values()].sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).slice(0,250);
+  state.news=[...old.values()]
+    .filter(x=>x?.id && x?.timestamp)
+    .sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))
+    .slice(0,500);
   state.lastNewsSync=now;
-  return {count:items.length,lastNewsSync:now};
+  return {count:items.length,stored:state.news.length,lastNewsSync:now};
 }
