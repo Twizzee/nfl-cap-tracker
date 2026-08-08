@@ -16,26 +16,40 @@ export function parseSpotracContracts(html){
    const name=(cells[0]||'').replace(/\s+/g,' ').trim();
    const position=(cells[1]||'').trim();
    if(!name||/^player/i.test(name)||!position||position.length>6)continue;
-   const moneyCells=cells.map((v,i)=>({v,i,n:cash(v)})).filter(x=>/\$/.test(x.v));
-   if(moneyCells.length<3)continue;
-   const nums=cells.map((v,i)=>({v,i,n:integer(v)})).filter(x=>x.n!==null);
-   const years=nums.filter(x=>x.n>=2000&&x.n<=2100).map(x=>x.n);
-   const short=nums.filter(x=>x.n>=1&&x.n<=10).map(x=>x.n);
-   const totalValue=moneyCells[moneyCells.length-4]?.n||0;
-   const apy=moneyCells[moneyCells.length-3]?.n||0;
-   const guaranteedAtSigning=moneyCells[moneyCells.length-2]?.n||0;
-   const practicalGuarantee=moneyCells[moneyCells.length-1]?.n||0;
+
+   let signedYear=null,contractEnd=null,contractYears=null,totalValue=0,apy=0,guaranteedAtSigning=0,practicalGuarantee=0;
+   // Spotrac's current team-contract table has fixed columns:
+   // Player, Pos, Start Year, Type, Age At Signing, Start Year, End Year, Yrs, Value, Average Salary, Guarantee at Sign, Practical Guarantee.
+   if(cells.length>=12 && (/\$/.test(cells[8]||'') || /\$/.test(cells[9]||''))){
+     signedYear=integer(cells[5])||integer(cells[2]);
+     contractEnd=integer(cells[6]);
+     contractYears=integer(cells[7]);
+     totalValue=cash(cells[8]);
+     apy=cash(cells[9]);
+     guaranteedAtSigning=cash(cells[10]);
+     practicalGuarantee=cash(cells[11]);
+   } else {
+     // Generic fallback for minor markup changes.
+     const moneyCells=cells.map((v,i)=>({v,i,n:cash(v)})).filter(x=>/\$/.test(x.v));
+     if(moneyCells.length<2)continue;
+     const nums=cells.map((v,i)=>({v,i,n:integer(v)})).filter(x=>x.n!==null);
+     const years=nums.filter(x=>x.n>=2000&&x.n<=2100).map(x=>x.n);
+     const short=nums.filter(x=>x.n>=1&&x.n<=10).map(x=>x.n);
+     signedYear=years.length?years[0]:null;
+     contractEnd=years.length?years[years.length-1]:null;
+     contractYears=short.length?short[short.length-1]:null;
+     totalValue=moneyCells[0]?.n||0;
+     apy=moneyCells[1]?.n||0;
+     guaranteedAtSigning=moneyCells[2]?.n||0;
+     practicalGuarantee=moneyCells[3]?.n||guaranteedAtSigning;
+   }
    if(!totalValue&&!apy&&!practicalGuarantee&&!guaranteedAtSigning)continue;
    const key=norm(name);if(!key||seen.has(key))continue;seen.add(key);
-   const signedYear=years.length?years[0]:null;
-   const contractEnd=years.length?years[years.length-1]:null;
-   let contractYears=short.length?short[short.length-1]:null;
    if((!contractYears||contractYears>10)&&signedYear&&contractEnd)contractYears=Math.max(1,contractEnd-signedYear);
    rows.push({name,position,totalValue,apy,guaranteedAtSigning,totalGuaranteed:practicalGuarantee||guaranteedAtSigning,signedYear,contractEnd,contractYears,spotracPracticalGuarantee:practicalGuarantee});
  }
  if(rows.length>=20)return rows;
 
- // Fallback for simplified/server-rendered table text.
  const text=cleanText(html);
  const body=text.slice(Math.max(0,text.search(/Player\s*\(\d+\).*?Practical Guarantee/i)));
  const re=/([A-Z][A-Za-z'’.\-]*(?:\s+[A-Z][A-Za-z'’.\-]*){1,4})\s+([A-Z]{1,4})\s+(\d{4})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d+)\s+\$([0-9,]+)\s+\$([0-9,]+)\s+(?:\$([0-9,]+))?\s*(?:\$([0-9,]+))?/g;
