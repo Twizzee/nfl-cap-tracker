@@ -2,7 +2,7 @@ import express from 'express';
 import { syncEspn } from './espnSync.js';
 import { syncAllContracts } from './capSync.js';
 import { syncTeamCaps } from './teamCapSync.js';
-import { syncMoveNews, fetchEspnNews } from './newsSync.js';
+import { syncMoveNews, fetchAllNews } from './newsSync.js';
 import { syncStmLeague } from './stmSync.js';
 import { syncSpotracLeague } from './spotracSync.js';
 import { syncFreeAgents } from './freeAgencySync.js';
@@ -72,16 +72,16 @@ app.get('/api/state', async (_req, res) => {
 
 app.get('/api/news', async (_req,res)=>{
   try {
-    const live=await fetchEspnNews(200);
-    if(live.length) return res.json({ok:true,live:true,items:live});
+    const live=await fetchAllNews();
+    if(live.items.length) return res.json({ok:true,live:true,items:live.items,sources:live.sources});
   } catch (error) {
-    console.error('Live news fetch failed:',error.message||error);
+    console.error('Live multi-source news fetch failed:',error.message||error);
   }
   try {
     const s=await readState();
-    res.json({ok:true,live:false,items:(s.news||[]).slice(0,200)});
+    res.json({ok:true,live:false,items:(s.news||[]).slice(0,300),sources:s.newsSources||{}});
   } catch (error) {
-    res.status(500).json({ok:false,error:String(error.message||error),items:[]});
+    res.status(500).json({ok:false,error:String(error.message||error),items:[],sources:{}});
   }
 });
 
@@ -118,7 +118,7 @@ async function fullSync(s) {
   const result = {};
   result.roster = await syncEspn(s).catch(e => ({ error: String(e.message || e), teamsSynced: 0, fullRosters: 0, validated: false, failures: [] }));
   await writeState(s);
-  result.news = await syncMoveNews(s).catch(e => ({ error: String(e.message || e), count:0 }));
+  result.news = await syncMoveNews(s).catch(e => ({ error: String(e.message || e), count:0, sources:{} }));
   await writeState(s);
   result.stm = await syncStmLeague(s).catch(e => ({ error: String(e.message || e), teams: 0, players: 0, failures: [] }));
   await writeState(s);
@@ -134,10 +134,11 @@ async function fullSync(s) {
   result.validation=validateSync(s,result);
   s.lastValidation=result.validation;
   s.syncLog = s.syncLog || [];
+  const newsSources=Object.entries(result.news.sources||{}).map(([k,v])=>`${k} ${v.ok?v.count:'ERR'}`).join(', ');
   s.syncLog.unshift({
     timestamp: s.lastFullSync,
     status: result.validation.ok ? 'ok' : 'partial',
-    message: `Pipeline: ESPN ${result.roster.teamsSynced || 0}/32, STM ${result.stm.teams || 0}/32, Spotrac ${result.spotrac.teams || 0}/32, free agents ${result.freeAgents.players || 0}, news ${result.news.count || 0}, PFN caps ${result.teamCaps.teams || 0}/32. Validation ${result.validation.ok?'PASS':'PARTIAL'}.`
+    message: `Pipeline: ESPN rosters ${result.roster.teamsSynced || 0}/32, STM ${result.stm.teams || 0}/32, Spotrac ${result.spotrac.teams || 0}/32, free agents ${result.freeAgents.players || 0}, news ${result.news.count || 0}${newsSources?` (${newsSources})`:''}, PFN caps ${result.teamCaps.teams || 0}/32. Validation ${result.validation.ok?'PASS':'PARTIAL'}.`
   });
   s.syncLog = s.syncLog.slice(0, 300);
   await writeState(s);
