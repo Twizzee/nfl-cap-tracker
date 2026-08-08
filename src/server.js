@@ -38,8 +38,8 @@ app.get('/api/meta', async (_req, res) => {
   res.json({
     mode: process.env.VERCEL ? 'website' : 'local',
     storage: storageMode(),
-    automaticUpdates: Boolean(process.env.VERCEL || process.env.AUTO_SYNC !== 'false'),
-    publicManualSync: process.env.ALLOW_PUBLIC_SYNC === 'true' || !process.env.VERCEL
+    automaticUpdates: Boolean(process.env.AUTO_SYNC === 'true'),
+    publicManualSync: true
   });
 });
 
@@ -117,9 +117,6 @@ async function runLockedSync() {
 }
 
 app.post('/api/sync/all', async (_req, res) => {
-  if (process.env.VERCEL && process.env.ALLOW_PUBLIC_SYNC !== 'true') {
-    return res.status(403).json({ error: 'Manual public sync is disabled on the website. Automatic updates are enabled.' });
-  }
   try {
     const run = await runLockedSync();
     if (run.busy) return res.status(409).json({ error: 'Sync already running' });
