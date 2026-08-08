@@ -1,10 +1,10 @@
 import express from 'express';
 import { syncEspn } from './espnSync.js';
 import { syncAllContracts } from './capSync.js';
-import { syncXepContracts } from './xepSync.js';
 import { syncTeamCaps } from './teamCapSync.js';
 import { syncMoveNews } from './newsSync.js';
 import { syncStmLeague } from './stmSync.js';
+import { syncSpotracLeague } from './spotracSync.js';
 import { readState, writeState, storageMode, acquireSyncLock, releaseSyncLock } from './lib/stateRepo.js';
 
 const app = express();
@@ -17,7 +17,7 @@ function summarize(s) {
     verified: s.players.filter(p => p.status !== 'removed' && (p.contractStatus === 'verified' || p.contractStatus === 'confirmed')).length,
     lastSync: s.lastSync,
     lastContractSync: s.lastContractSync,
-    lastXepSync: s.lastXepSync,
+    lastSpotracSync: s.lastSpotracSync,
     lastTeamCapSync: s.lastTeamCapSync,
     lastNewsSync: s.lastNewsSync,
     lastFullSync: s.lastFullSync,
@@ -38,7 +38,7 @@ app.get('/api/meta', async (_req, res) => {
   res.json({
     mode: process.env.VERCEL ? 'website' : 'local',
     storage: storageMode(),
-    automaticUpdates: Boolean(process.env.AUTO_SYNC === 'true'),
+    automaticUpdates: Boolean(process.env.VERCEL || process.env.AUTO_SYNC !== 'false'),
     publicManualSync: true
   });
 });
@@ -85,19 +85,19 @@ async function fullSync(s) {
   await writeState(s);
   result.stm = await syncStmLeague(s).catch(e => ({ error: String(e.message || e), teams: 0, players: 0, failures: [] }));
   await writeState(s);
-  result.teamCaps = await syncTeamCaps(s).catch(e => ({ error: String(e.message || e), teams: 0 }));
+  result.spotrac = await syncSpotracLeague(s).catch(e => ({ error: String(e.message || e), teams: 0, players: 0, failures: [] }));
   await writeState(s);
-  result.xep = await syncXepContracts(s).catch(e => ({ error: String(e.message || e), matched: 0, total: 0 }));
+  result.teamCaps = await syncTeamCaps(s).catch(e => ({ error: String(e.message || e), teams: 0 }));
   await writeState(s);
   result.pfn = await syncAllContracts(s).catch(e => [{ error: String(e.message || e) }]);
   await writeState(s);
   s.lastFullSync = new Date().toISOString();
   s.syncLog = s.syncLog || [];
-  const pipelineOk = Boolean(result.roster?.validated) && Number(result.stm?.teams || 0) >= 30;
+  const pipelineOk = Boolean(result.roster?.validated) && Number(result.stm?.teams || 0) >= 30 && Number(result.spotrac?.teams || 0) >= 25;
   s.syncLog.unshift({
     timestamp: s.lastFullSync,
     status: pipelineOk ? 'ok' : 'partial',
-    message: `Website pipeline: ESPN ${result.roster.teamsSynced || 0}/32 (${result.roster.fullRosters || 0} full), STM ${result.stm.teams || 0}/32 (${result.stm.players || 0} rows), xEP ${result.xep.matched || 0}, PFN caps ${result.teamCaps.teams || 0}/32.`
+    message: `Website pipeline: ESPN ${result.roster.teamsSynced || 0}/32 (${result.roster.fullRosters || 0} full), STM ${result.stm.teams || 0}/32 (${result.stm.players || 0} rows), Spotrac ${result.spotrac.teams || 0}/32 (${result.spotrac.players || 0} contracts), PFN caps ${result.teamCaps.teams || 0}/32.`
   });
   s.syncLog = s.syncLog.slice(0, 300);
   await writeState(s);
