@@ -5,6 +5,7 @@ import { syncTeamCaps } from './teamCapSync.js';
 import { syncMoveNews } from './newsSync.js';
 import { syncStmLeague } from './stmSync.js';
 import { syncSpotracLeague } from './spotracSync.js';
+import { syncFreeAgents } from './freeAgencySync.js';
 import { readState, writeState, storageMode, acquireSyncLock, releaseSyncLock } from './lib/stateRepo.js';
 
 const app = express();
@@ -15,9 +16,11 @@ function summarize(s) {
     teams: s.teams.length,
     players: s.players.filter(p => p.status !== 'removed').length,
     verified: s.players.filter(p => p.status !== 'removed' && (p.contractStatus === 'verified' || p.contractStatus === 'confirmed')).length,
+    freeAgents: (s.freeAgents || []).length,
     lastSync: s.lastSync,
     lastContractSync: s.lastContractSync,
     lastSpotracSync: s.lastSpotracSync,
+    lastFreeAgentSync: s.lastFreeAgentSync,
     lastTeamCapSync: s.lastTeamCapSync,
     lastNewsSync: s.lastNewsSync,
     lastFullSync: s.lastFullSync,
@@ -87,6 +90,8 @@ async function fullSync(s) {
   await writeState(s);
   result.spotrac = await syncSpotracLeague(s).catch(e => ({ error: String(e.message || e), teams: 0, players: 0, failures: [] }));
   await writeState(s);
+  result.freeAgents = await syncFreeAgents(s).catch(e => ({ error: String(e.message || e), players: 0 }));
+  await writeState(s);
   result.teamCaps = await syncTeamCaps(s).catch(e => ({ error: String(e.message || e), teams: 0 }));
   await writeState(s);
   result.pfn = await syncAllContracts(s).catch(e => [{ error: String(e.message || e) }]);
@@ -97,7 +102,7 @@ async function fullSync(s) {
   s.syncLog.unshift({
     timestamp: s.lastFullSync,
     status: pipelineOk ? 'ok' : 'partial',
-    message: `Website pipeline: ESPN ${result.roster.teamsSynced || 0}/32 (${result.roster.fullRosters || 0} full), STM ${result.stm.teams || 0}/32 (${result.stm.players || 0} rows), Spotrac ${result.spotrac.teams || 0}/32 (${result.spotrac.players || 0} contracts), PFN caps ${result.teamCaps.teams || 0}/32.`
+    message: `Website pipeline: ESPN ${result.roster.teamsSynced || 0}/32 (${result.roster.fullRosters || 0} full), STM ${result.stm.teams || 0}/32 (${result.stm.players || 0} rows), Spotrac ${result.spotrac.teams || 0}/32 (${result.spotrac.players || 0} contracts), free agents ${result.freeAgents.players || 0}, PFN caps ${result.teamCaps.teams || 0}/32.`
   });
   s.syncLog = s.syncLog.slice(0, 300);
   await writeState(s);
