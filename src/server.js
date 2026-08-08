@@ -2,7 +2,7 @@ import express from 'express';
 import { syncEspn } from './espnSync.js';
 import { syncAllContracts } from './capSync.js';
 import { syncTeamCaps } from './teamCapSync.js';
-import { syncMoveNews } from './newsSync.js';
+import { syncMoveNews, fetchEspnNews } from './newsSync.js';
 import { syncStmLeague } from './stmSync.js';
 import { syncSpotracLeague } from './spotracSync.js';
 import { syncFreeAgents } from './freeAgencySync.js';
@@ -44,13 +44,13 @@ function validateSync(s,result={}){
     freeAgents:Number(result.freeAgents?.players||0)>=25,
     teamTotals:Number(result.teamCaps?.teams||0)>=20
   };
-  return {ok:Object.values(checks).every(Boolean),checks,counts:{active,withCap,withTerms,withGuaranteeSource,news:(s.news||[]).length,freeAgents:(s.freeAgents||[]).length}};
+  return {ok:Object.values(checks).every(Boolean),checks,counts:{active:active.length,withCap,withTerms,withGuaranteeSource,news:(s.news||[]).length,freeAgents:(s.freeAgents||[]).length}};
 }
 
 app.get('/api/health', async (_req, res) => {
   try {
     const s = await readState();
-    res.json({ ok: true, storage: storageMode(), summary: summarize(s), now: new Date().toISOString() });
+    res.json({ ok: true, storage: storageMode(), summary: summarize(s), validation:s.lastValidation||null, now: new Date().toISOString() });
   } catch (error) {
     res.status(500).json({ ok: false, error: String(error.message || error) });
   }
@@ -68,6 +68,21 @@ app.get('/api/meta', async (_req, res) => {
 app.get('/api/state', async (_req, res) => {
   try { res.json(await readState()); }
   catch (error) { res.status(500).json({ error: String(error.message || error) }); }
+});
+
+app.get('/api/news', async (_req,res)=>{
+  try {
+    const live=await fetchEspnNews(200);
+    if(live.length) return res.json({ok:true,live:true,items:live});
+  } catch (error) {
+    console.error('Live news fetch failed:',error.message||error);
+  }
+  try {
+    const s=await readState();
+    res.json({ok:true,live:false,items:(s.news||[]).slice(0,200)});
+  } catch (error) {
+    res.status(500).json({ok:false,error:String(error.message||error),items:[]});
+  }
 });
 
 app.get('/api/team/:abbr', async (req, res) => {
