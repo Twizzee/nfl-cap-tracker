@@ -1,3 +1,5 @@
+import './redesign.js';
+if(!document.querySelector('link[href="/redesign.css"]')){const l=document.createElement('link');l.rel='stylesheet';l.href='/redesign.css';document.head.appendChild(l)}
 const $=s=>document.querySelector(s);
 const money=n=>`${Number(n||0)<0?'-':''}$${(Math.abs(Number(n||0))/1e6).toFixed(1)}M`;
 let busy=false,lastKey='';
