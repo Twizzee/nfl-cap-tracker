@@ -24,18 +24,25 @@ export async function fetchPfnContracts(abbr){
  return {url,rows:parsePfnContracts(await res.text())};
 }
 export async function syncContractsForTeam(state,abbr){
- const now=new Date().toISOString(); const {url,rows}=await fetchPfnContracts(abbr); let matched=0,added=0;
+ const now=new Date().toISOString(); const {url,rows}=await fetchPfnContracts(abbr); let matched=0,unmatched=0,filled=0;
  const teamPlayers=state.players.filter(p=>p.team===abbr&&p.status!=='removed');
  for(const c of rows){
-   let p=teamPlayers.find(x=>normalizeName(x.name)===normalizeName(c.name));
-   if(!p){p={team:abbr,name:c.name,position:'',age:null,experience:null,college:'',status:'active',source:'PFN cap sync'};state.players.push(p);teamPlayers.push(p);added++;}
-   Object.assign(p,c);
-   p.contractStatus='verified'; p.contractSource='PFN'; p.contractSourceUrl=url; p.contractUpdatedAt=now;
+   const p=teamPlayers.find(x=>normalizeName(x.name)===normalizeName(c.name));
+   if(!p){unmatched++;continue;}
+   // PFN is a cross-check/fallback. Do not overwrite STM cap mechanics when STM is present.
+   if(!p.sourceChecks?.STM){
+     if(Number(c.capHit2026||0)>0){p.capHit2026=c.capHit2026;filled++;}
+     if(Number(c.baseSalary2026||0)>0){p.baseSalary2026=c.baseSalary2026;filled++;}
+   }
+   if(Number(p.guaranteed2026||0)<=0 && Number(c.guaranteed2026||0)>0){p.guaranteed2026=c.guaranteed2026;filled++;}
+   p.contractStatus='verified';
+   p.contractSource=[p.contractSource,'PFN'].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' + ');
+   p.pfnSourceUrl=url;p.contractUpdatedAt=now;
    p.sourceChecks={...(p.sourceChecks||{}),PFN:true,ESPN:Boolean(p.espnId)||Boolean(p.sourceChecks?.ESPN)};
    matched++;
  }
- const team=state.teams.find(t=>t.abbr===abbr); if(team){team.contractsUpdatedAt=now;team.contractPlayerCount=rows.length;}
- return {abbr,matched,added,source:'PFN',url};
+ const team=state.teams.find(t=>t.abbr===abbr); if(team){team.pfnMatchedCount=matched;team.pfnUnmatchedCount=unmatched;team.pfnCrossCheckUpdatedAt=now;}
+ return {abbr,matched,unmatched,filled,source:'PFN',url};
 }
 async function mapLimit(items,limit,fn){let i=0;const out=[];async function worker(){while(i<items.length){const idx=i++;try{out[idx]=await fn(items[idx],idx)}catch(e){out[idx]={abbr:items[idx].abbr,error:String(e.message||e)}}}}await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));return out;}
 export async function syncAllContracts(state){const results=await mapLimit(state.teams,5,t=>syncContractsForTeam(state,t.abbr));state.lastContractSync=new Date().toISOString();return results;}
