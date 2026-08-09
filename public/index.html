@@ -25,7 +25,7 @@
       <div class="eyebrow">LIVE DATA</div>
       <div id="syncStatus">Loading database…</div>
       <button id="syncBtn" class="primary small">Update entire league</button>
-      <small>ESPN roster/news · StickToTheModel 2026 cap tables · Spotrac contract value/APY/guarantees + free agents · PFN team-total cross-checks. Unsourced fields remain $0 and are labeled accordingly.</small>
+      <small>ESPN roster/news · StickToTheModel 2026 cap tables · Spotrac contract value/APY/guarantees + free agents · Over The Cap contract structure fallback · PFN team-total cross-checks. Unsourced fields remain $0 and are labeled accordingly.</small>
     </div>
   </aside>
 
@@ -49,62 +49,26 @@
       <article class="panel"><div class="panel-head"><div><div class="eyebrow">ROSTER SNAPSHOT</div><h3>Current live roster</h3></div><button class="text-btn" data-go="roster">Open roster</button></div><div id="positionSummary" class="position-grid"></div></article>
     </section>
 
-    <section id="roster" class="view">
-      <article class="panel full">
-        <div class="panel-head"><div><div class="eyebrow">LIVE CONTRACT DATABASE</div><h3>Roster & Contracts</h3></div><input id="playerSearch" placeholder="Search player or position…"></div>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>2026 Cap Hit</th><th>Base</th><th>Dead Cap</th><th>Cut Savings</th><th>Guaranteed</th><th>Expires</th><th>Data</th><th>Sources</th></tr></thead><tbody id="rosterTable"></tbody></table></div>
-      </article>
-    </section>
-
-    <section id="players" class="view">
-      <article class="panel full">
-        <div class="panel-head"><div><div class="eyebrow">LEAGUE-WIDE LOOKUP</div><h3>Player Search</h3></div><input id="globalPlayerSearch" placeholder="Search any NFL player…"></div>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>2026 Cap Hit</th><th>Total Value</th><th>APY</th><th>Guaranteed</th><th>Expires</th><th>Confidence</th></tr></thead><tbody id="globalPlayerTable"></tbody></table></div>
-      </article>
-    </section>
+    <section id="roster" class="view"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">LIVE CONTRACT DATABASE</div><h3>Roster & Contracts</h3></div><input id="playerSearch" placeholder="Search player or position…"></div><div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>2026 Cap Hit</th><th>Base</th><th>Dead Cap</th><th>Cut Savings</th><th>Guaranteed</th><th>Expires</th><th>Data</th><th>Sources</th></tr></thead><tbody id="rosterTable"></tbody></table></div></article></section>
+    <section id="players" class="view"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">LEAGUE-WIDE LOOKUP</div><h3>Player Search</h3></div><input id="globalPlayerSearch" placeholder="Search any NFL player…"></div><div class="table-wrap"><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>2026 Cap Hit</th><th>Total Value</th><th>APY</th><th>Guaranteed</th><th>Expires</th><th>Confidence</th></tr></thead><tbody id="globalPlayerTable"></tbody></table></div></article></section>
 
     <section id="player" class="view">
       <button id="backToPlayers" class="back-btn">← Back</button>
       <div class="player-hero"><div><div class="eyebrow">PLAYER CONTRACT PAGE</div><h2 id="playerPageName">Player</h2><p id="playerPageMeta" class="muted"></p></div><div class="confidence-box"><span>Source confidence</span><strong id="playerConfidence">—</strong><small id="playerConfidenceMeta"></small></div></div>
       <div class="metrics player-metrics"><article><span>Total Value</span><strong id="playerTotalValue">$0</strong></article><article><span>APY</span><strong id="playerApy">$0</strong></article><article><span>Total Guaranteed</span><strong id="playerGuaranteed">$0</strong></article><article><span>Signing Bonus</span><strong id="playerSigningBonus">$0</strong></article></div>
-      <div class="grid two">
-        <article class="panel"><div class="panel-head"><div><div class="eyebrow">CONTRACT STATUS</div><h3>Terms & expiration</h3></div></div><div id="playerTerms" class="detail-list"></div></article>
-        <article class="panel"><div class="panel-head"><div><div class="eyebrow">SOURCE AUDIT</div><h3>Where these numbers came from</h3></div></div><div id="playerSources" class="source-list"></div></article>
-      </div>
+      <div class="grid two"><article class="panel"><div class="panel-head"><div><div class="eyebrow">CONTRACT STATUS</div><h3>Terms & expiration</h3></div></div><div id="playerTerms" class="detail-list"></div></article><article class="panel"><div class="panel-head"><div><div class="eyebrow">SOURCE AUDIT</div><h3>Where these numbers came from</h3></div></div><div id="playerSources" class="source-list"></div></article></div>
       <article class="panel full"><div class="panel-head"><div><div class="eyebrow">YEARLY BREAKDOWN</div><h3>Contract by league year</h3></div><span id="yearlyNote" class="muted"></span></div><div class="table-wrap"><table><thead><tr><th>Year</th><th>Base Salary</th><th>Cap Hit</th><th>Guaranteed</th><th>Signing Bonus Proration</th><th>Roster/Other Bonus</th><th>Data</th></tr></thead><tbody id="yearlyTable"></tbody></table></div></article>
     </section>
 
-    <section id="expirations" class="view">
-      <article class="panel full">
-        <div class="panel-head"><div><div class="eyebrow">FREE-AGENCY PIPELINE</div><h3>Contract Expirations</h3></div><div class="filter-row"><select id="expiryYear"></select><select id="expiryTeam"><option value="ALL">All teams</option></select><select id="expiryStatus"><option value="ALL">All statuses</option><option value="UFA">UFA</option><option value="RFA">RFA</option><option value="ERFA">ERFA</option><option value="UNKNOWN">Unknown</option></select></div></div>
-        <p class="muted helper">UFA/RFA/ERFA labels are marked projected when they are inferred from experience and contract length rather than explicitly sourced.</p>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Expiration</th><th>FA Status</th><th>2026 Cap Hit</th><th>APY</th><th>Confidence</th></tr></thead><tbody id="expirationTable"></tbody></table></div>
-      </article>
-    </section>
-
-    <section id="positions" class="view">
-      <div class="toolbar-panel"><div><div class="eyebrow">POSITIONAL CAP ALLOCATION</div><h3>Position Spending</h3></div><select id="positionGroup"></select></div>
-      <div class="metrics"><article><span>Selected Team Spend</span><strong id="selectedPositionSpend">$0</strong></article><article><span>League Rank</span><strong id="selectedPositionRank">—</strong></article><article><span>Players Counted</span><strong id="selectedPositionPlayers">0</strong></article><article><span>% of Adjusted Cap</span><strong id="selectedPositionPct">0%</strong></article></div>
-      <div class="grid two">
-        <article class="panel full"><div class="panel-head"><div><div class="eyebrow">32-TEAM RANKING</div><h3 id="positionRankTitle">Spending by position</h3></div></div><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Team</th><th>2026 Cap Spend</th><th>Players</th><th>% Adjusted Cap</th></tr></thead><tbody id="positionRankTable"></tbody></table></div></article>
-        <article class="panel"><div class="panel-head"><div><div class="eyebrow">SELECTED TEAM</div><h3>All position groups</h3></div></div><div id="teamPositionBreakdown" class="spend-list large-spend"></div></article>
-      </div>
-    </section>
-
+    <section id="expirations" class="view"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">FREE-AGENCY PIPELINE</div><h3>Contract Expirations</h3></div><div class="filter-row"><select id="expiryYear"></select><select id="expiryTeam"><option value="ALL">All teams</option></select><select id="expiryStatus"><option value="ALL">All statuses</option><option value="UFA">UFA</option><option value="RFA">RFA</option><option value="ERFA">ERFA</option><option value="UNKNOWN">Unknown</option></select></div></div><p class="muted helper">UFA/RFA/ERFA labels are marked projected when inferred rather than explicitly sourced.</p><div class="table-wrap"><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Expiration</th><th>FA Status</th><th>2026 Cap Hit</th><th>APY</th><th>Confidence</th></tr></thead><tbody id="expirationTable"></tbody></table></div></article></section>
+    <section id="positions" class="view"><div class="toolbar-panel"><div><div class="eyebrow">POSITIONAL CAP ALLOCATION</div><h3>Position Spending</h3></div><select id="positionGroup"></select></div><div class="metrics"><article><span>Selected Team Spend</span><strong id="selectedPositionSpend">$0</strong></article><article><span>League Rank</span><strong id="selectedPositionRank">—</strong></article><article><span>Players Counted</span><strong id="selectedPositionPlayers">0</strong></article><article><span>% of Adjusted Cap</span><strong id="selectedPositionPct">0%</strong></article></div><div class="grid two"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">32-TEAM RANKING</div><h3 id="positionRankTitle">Spending by position</h3></div></div><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Team</th><th>2026 Cap Spend</th><th>Players</th><th>% Adjusted Cap</th></tr></thead><tbody id="positionRankTable"></tbody></table></div></article><article class="panel"><div class="panel-head"><div><div class="eyebrow">SELECTED TEAM</div><h3>All position groups</h3></div></div><div id="teamPositionBreakdown" class="spend-list large-spend"></div></article></div></section>
     <section id="transactions" class="view"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">NFL MOVE CENTER</div><h3>Recent Signings, Cuts, Trades & Waivers</h3></div><span id="lastSyncText" class="muted"></span></div><div class="feed-filters"><button id="allMoves" class="text-btn active-filter">All NFL</button><button id="teamMoves" class="text-btn">Selected team</button></div><div id="transactionFeed" class="feed large"></div></article></section>
-
-    <section id="league" class="view">
-      <article class="panel full">
-        <div class="panel-head"><div><div class="eyebrow">32-TEAM VIEW</div><h3>League Cap Rankings</h3></div><div class="filter-row"><select id="leagueMetric"><option value="capSpace">Cap Space</option><option value="deadMoney">Dead Money</option><option value="activeSpend">Active Spending</option><option value="adjustedCap">Adjusted Cap</option><option value="verifiedSpend">Verified Player Cap Hits</option></select></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Team</th><th id="metricHeading">Cap Space</th><th>Adjusted Cap</th><th>Active Spend</th><th>Dead Money</th><th>Verified Player Spend</th><th>Updated</th></tr></thead><tbody id="leagueTable"></tbody></table></div>
-      </article>
-      <article class="panel full top-leaders-panel"><div class="panel-head"><div><div class="eyebrow">LEAGUE LEADERS</div><h3>Largest individual 2026 cap hits</h3></div></div><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Player</th><th>Team</th><th>Pos</th><th>Cap Hit</th><th>APY</th><th>Confidence</th></tr></thead><tbody id="capHitLeaders"></tbody></table></div></article>
-    </section>
-
+    <section id="league" class="view"><article class="panel full"><div class="panel-head"><div><div class="eyebrow">32-TEAM VIEW</div><h3>League Cap Rankings</h3></div><div class="filter-row"><select id="leagueMetric"><option value="capSpace">Cap Space</option><option value="deadMoney">Dead Money</option><option value="activeSpend">Active Spending</option><option value="adjustedCap">Adjusted Cap</option><option value="verifiedSpend">Verified Player Cap Hits</option></select></div></div><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Team</th><th id="metricHeading">Cap Space</th><th>Adjusted Cap</th><th>Active Spend</th><th>Dead Money</th><th>Verified Player Spend</th><th>Updated</th></tr></thead><tbody id="leagueTable"></tbody></table></div></article><article class="panel full top-leaders-panel"><div class="panel-head"><div><div class="eyebrow">LEAGUE LEADERS</div><h3>Largest individual 2026 cap hits</h3></div></div><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Player</th><th>Team</th><th>Pos</th><th>Cap Hit</th><th>APY</th><th>Confidence</th></tr></thead><tbody id="capHitLeaders"></tbody></table></div></article></section>
     <section id="health" class="view"><div class="metrics"><article><span>Active Players</span><strong id="healthPlayers">0</strong></article><article><span>Verified Contracts</span><strong id="healthVerified">0</strong></article><article><span>Coverage</span><strong id="healthCoverage">0%</strong></article><article><span>Rosters Synced</span><strong id="healthTeams">0 / 32</strong></article></div><article class="panel full"><div class="panel-head"><div><div class="eyebrow">SOURCE COVERAGE</div><h3>League Data Health</h3></div></div><div class="table-wrap"><table><thead><tr><th>Team</th><th>Players</th><th>Verified</th><th>Coverage</th><th>ESPN Roster</th><th>Contracts</th><th>Cap Totals</th></tr></thead><tbody id="healthTable"></tbody></table></div></article></section>
   </main>
 </div>
 <script src="/app.js" type="module"></script>
 <script src="/enhancements.js" type="module"></script>
+<script src="/contract-details.js" type="module"></script>
 </body>
 </html>
