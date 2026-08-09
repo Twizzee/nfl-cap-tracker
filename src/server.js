@@ -7,7 +7,7 @@ import { syncStmLeague } from './stmSync.js';
 import { syncSpotracLeague } from './spotracSync.js';
 import { syncOtcContracts, enrichOtcPlayer } from './otcSync.js';
 import { syncFreeAgents } from './freeAgencySync.js';
-import { canonicalizePlayers } from './lib/playerMerge.js';
+import { canonicalizePlayers, looseNameMatch } from './lib/playerMerge.js';
 import { readState, writeState, storageMode, acquireSyncLock, releaseSyncLock } from './lib/stateRepo.js';
 
 const app = express();
@@ -26,7 +26,8 @@ function contractDiagnostics(s){
  const yearsMismatch=active.filter(p=>{const calc=yearsLeftFromEnd(p);return calc!==null&&Number(p.yearsLeft)!==calc});
  const impossible=active.filter(p=>Number(p.apy||0)>Number(p.totalValue||0)&&Number(p.totalValue||0)>0);
  const guaranteeOverValue=active.filter(p=>Number(p.totalGuaranteed||0)>Number(p.totalValue||0)&&Number(p.totalValue||0)>0);
- const duplicates=[];const seen=new Map();for(const p of active){const k=`${p.team}:${String(p.name||'').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\.?\b/g,'').replace(/[^a-z0-9]/g,'')}`;if(seen.has(k))duplicates.push({team:p.team,name:p.name,other:seen.get(k)});else seen.set(k,p.name)}
+ const duplicates=[];
+ for(let i=0;i<active.length;i++)for(let j=i+1;j<active.length;j++){const a=active[i],b=active[j];if(a.team===b.team&&looseNameMatch(a.name,b.name))duplicates.push({team:a.team,name:a.name,other:b.name});}
  return{
   ok:missingYears.length===0&&yearsMismatch.length===0&&impossible.length===0&&guaranteeOverValue.length===0&&duplicates.length===0,
   counts:{active:active.length,spotrac:spotrac.length,withTerms:withTerms.length,withEnd:withEnd.length,withYearsLeft:withYearsLeft.length,missingYears:missingYears.length,yearsMismatch:yearsMismatch.length,apyOverValue:impossible.length,guaranteeOverValue:guaranteeOverValue.length,duplicates:duplicates.length},
@@ -57,7 +58,6 @@ async function fullSync(s){
  result.teamCaps=await syncTeamCaps(s).catch(e=>({error:String(e.message||e),teams:0}));await writeState(s);
  result.pfn=await syncAllContracts(s).catch(e=>[{error:String(e.message||e)}]);
  result.duplicatesMerged+=canonicalizePlayers(s);
- // Normalize years-left after all sources finish so late fallbacks cannot leave stale values.
  for(const p of s.players){if(p.status==='removed')continue;const left=yearsLeftFromEnd(p);if(left!==null){p.yearsLeft=left;if(!p.freeAgentYear)p.freeAgentYear=Number(p.contractEnd||p.expirationYear)+1;}}
  await writeState(s);
  s.lastFullSync=new Date().toISOString();result.validation=validateSync(s,result);s.lastValidation=result.validation;s.lastContractDiagnostics=contractDiagnostics(s);s.syncLog=s.syncLog||[];const newsSources=Object.entries(result.news.sources||{}).map(([k,v])=>`${k} ${v.ok?v.count:'ERR'}`).join(', ');s.syncLog.unshift({timestamp:s.lastFullSync,status:result.validation.ok?'ok':'partial',message:`Pipeline: ESPN rosters ${result.roster.teamsSynced||0}/32, STM ${result.stm.teams||0}/32, Spotrac primary ${result.spotrac.players||0} matches, OTC fallback ${result.otc.matched||0} matched, free agents ${result.freeAgents.players||0}, news ${result.news.count||0}${newsSources?` (${newsSources})`:''}, PFN caps ${result.teamCaps.teams||0}/32, duplicate records merged ${result.duplicatesMerged||0}. Years-left ${result.validation.counts.withYearsLeft||0}/${result.validation.counts.active||0}. Validation ${result.validation.ok?'PASS':'PARTIAL'}.`});s.syncLog=s.syncLog.slice(0,300);await writeState(s);return result;
