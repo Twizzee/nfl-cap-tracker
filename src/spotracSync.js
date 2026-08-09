@@ -1,17 +1,78 @@
 import { findCanonicalPlayer } from './lib/playerMerge.js';
 
+const CURRENT_SEASON=2026;
 const TEAM_SLUGS={
  ARI:'arizona-cardinals',ATL:'atlanta-falcons',BAL:'baltimore-ravens',BUF:'buffalo-bills',CAR:'carolina-panthers',CHI:'chicago-bears',CIN:'cincinnati-bengals',CLE:'cleveland-browns',DAL:'dallas-cowboys',DEN:'denver-broncos',DET:'detroit-lions',GB:'green-bay-packers',HOU:'houston-texans',IND:'indianapolis-colts',JAX:'jacksonville-jaguars',KC:'kansas-city-chiefs',LV:'las-vegas-raiders',LAC:'los-angeles-chargers',LAR:'los-angeles-rams',MIA:'miami-dolphins',MIN:'minnesota-vikings',NE:'new-england-patriots',NO:'new-orleans-saints',NYG:'new-york-giants',NYJ:'new-york-jets',PHI:'philadelphia-eagles',PIT:'pittsburgh-steelers',SF:'san-francisco-49ers',SEA:'seattle-seahawks',TB:'tampa-bay-buccaneers',TEN:'tennessee-titans',WAS:'washington-commanders'
 };
+const TEAM_ALIASES={JAC:'JAX',WSH:'WAS',LA:'LAR'};
 function cleanText(html){return String(html||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;|&#160;/gi,' ').replace(/&amp;/gi,'&').replace(/&#39;|&apos;/gi,"'").replace(/&quot;/gi,'"').replace(/&ndash;|&#8211;/gi,'-').replace(/\s+/g,' ').trim()}
 function norm(s){return String(s||'').toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\.?\b/g,'').replace(/[^a-z0-9]/g,'')}
 function cash(s){const raw=String(s||'').replace(/,/g,'');const m=raw.match(/\$\s*([0-9]+(?:\.[0-9]+)?)\s*(B|M|K|billion|million|thousand)?/i);if(!m)return 0;const u=String(m[2]||'').toLowerCase();const mult=/^b|billion/.test(u)?1e9:/^m|million/.test(u)?1e6:/^k|thousand/.test(u)?1e3:1;return Math.round(Number(m[1])*mult)}
 function integer(s){const m=String(s||'').match(/^\s*(\d{1,4})\s*$/);return m?Number(m[1]):null}
 function cellsFromRow(rowHtml){const out=[];const re=/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;let m;while((m=re.exec(rowHtml)))out.push(cleanText(m[1]));return out}
 function pos(v){const p=String(v||'').trim().toUpperCase();return p==='ED'?'EDGE':p}
-export function parseSpotracContracts(html){const rows=[],seen=new Set(),trRe=/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;let tr;while((tr=trRe.exec(html))){const c=cellsFromRow(tr[1]);if(c.length<8)continue;const name=(c[0]||'').trim(),position=pos(c[1]);if(!name||/^player/i.test(name)||!position||position.length>8)continue;let signedYear=null,contractEnd=null,contractYears=null,totalValue=0,apy=0,guaranteedAtSigning=0,practicalGuarantee=0,contractType='';if(c.length>=12&&(/\$/.test(c[8]||'')||/\$/.test(c[9]||''))){signedYear=integer(c[5])||integer(c[2]);contractEnd=integer(c[6]);contractYears=integer(c[7]);contractType=c[3]||'';totalValue=cash(c[8]);apy=cash(c[9]);guaranteedAtSigning=cash(c[10]);practicalGuarantee=cash(c[11]);}else{const moneyCells=c.map((v,i)=>({v,i,n:cash(v)})).filter(x=>/\$/.test(x.v));if(moneyCells.length<2)continue;const nums=c.map(v=>integer(v)).filter(x=>x!==null),years=nums.filter(x=>x>=2000&&x<=2100),short=nums.filter(x=>x>=1&&x<=10);signedYear=years[0]||null;contractEnd=years[years.length-1]||null;contractYears=short[short.length-1]||null;totalValue=moneyCells[0]?.n||0;apy=moneyCells[1]?.n||0;guaranteedAtSigning=moneyCells[2]?.n||0;practicalGuarantee=moneyCells[3]?.n||guaranteedAtSigning;}if(!totalValue&&!apy&&!practicalGuarantee&&!guaranteedAtSigning)continue;const key=norm(name);if(!key||seen.has(key))continue;seen.add(key);rows.push({name,position,totalValue,apy,guaranteedAtSigning,totalGuaranteed:practicalGuarantee||guaranteedAtSigning,signedYear,contractEnd,contractYears,contractType});}return rows;}
-async function fetchWithTimeout(url,ms=20000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{signal:c.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/7.0','accept':'text/html,application/xhtml+xml'}})}finally{clearTimeout(t)}}
+function teamAbbr(v){const raw=String(v||'').toUpperCase().replace(/^IMAGE\s+/,'').replace(/[^A-Z]/g,'');return TEAM_ALIASES[raw]||raw}
+function yearsLeft(endYear){const y=Number(endYear||0);return y?Math.max(0,y-CURRENT_SEASON+1):null}
+
+// Spotrac league table shape:
+// Player | Pos | Team | Age At Signing | Start Year | End Year | Yrs | Value | Average Salary | Guarantee at Sign | Practical Guarantee
+export function parseSpotracLeagueContracts(html){
+ const rows=[],seen=new Set(),trRe=/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;let tr;
+ while((tr=trRe.exec(html))){
+  const c=cellsFromRow(tr[1]);if(c.length<10)continue;
+  const name=(c[0]||'').trim(),position=pos(c[1]),team=teamAbbr(c[2]);
+  if(!name||/^player/i.test(name)||!position||!TEAM_SLUGS[team])continue;
+  const contractStart=integer(c[4]),contractEnd=integer(c[5]),contractYears=integer(c[6]);
+  const totalValue=cash(c[7]),apy=cash(c[8]),guaranteedAtSigning=cash(c[9]),practicalGuarantee=cash(c[10]);
+  if(!totalValue&&!apy&&!guaranteedAtSigning&&!practicalGuarantee)continue;
+  const key=`${team}:${norm(name)}`;if(seen.has(key))continue;seen.add(key);
+  rows.push({name,position,team,contractStart,signedYear:contractStart,contractEnd,contractYears,yearsLeft:yearsLeft(contractEnd),totalValue,apy,guaranteedAtSigning,totalGuaranteed:practicalGuarantee||guaranteedAtSigning,contractType:''});
+ }
+ return rows;
+}
+
+export function parseSpotracContracts(html){const rows=[],seen=new Set(),trRe=/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;let tr;while((tr=trRe.exec(html))){const c=cellsFromRow(tr[1]);if(c.length<8)continue;const name=(c[0]||'').trim(),position=pos(c[1]);if(!name||/^player/i.test(name)||!position||position.length>8)continue;let signedYear=null,contractStart=null,contractEnd=null,contractYears=null,totalValue=0,apy=0,guaranteedAtSigning=0,practicalGuarantee=0,contractType='';if(c.length>=12&&(/\$/.test(c[8]||'')||/\$/.test(c[9]||''))){signedYear=integer(c[5])||integer(c[2]);contractStart=signedYear;contractEnd=integer(c[6]);contractYears=integer(c[7]);contractType=c[3]||'';totalValue=cash(c[8]);apy=cash(c[9]);guaranteedAtSigning=cash(c[10]);practicalGuarantee=cash(c[11]);}else{const moneyCells=c.map((v,i)=>({v,i,n:cash(v)})).filter(x=>/\$/.test(x.v));if(moneyCells.length<2)continue;const nums=c.map(v=>integer(v)).filter(x=>x!==null),years=nums.filter(x=>x>=2000&&x<=2100),short=nums.filter(x=>x>=1&&x<=10);signedYear=years[0]||null;contractStart=signedYear;contractEnd=years[years.length-1]||null;contractYears=short[short.length-1]||null;totalValue=moneyCells[0]?.n||0;apy=moneyCells[1]?.n||0;guaranteedAtSigning=moneyCells[2]?.n||0;practicalGuarantee=moneyCells[3]?.n||guaranteedAtSigning;}if(!totalValue&&!apy&&!practicalGuarantee&&!guaranteedAtSigning)continue;const key=norm(name);if(!key||seen.has(key))continue;seen.add(key);rows.push({name,position,totalValue,apy,guaranteedAtSigning,totalGuaranteed:practicalGuarantee||guaranteedAtSigning,signedYear,contractStart,contractEnd,contractYears,yearsLeft:yearsLeft(contractEnd),contractType});}return rows;}
+async function fetchWithTimeout(url,ms=20000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{signal:c.signal,headers:{'user-agent':'Mozilla/5.0 NFL-Cap-Tracker/8.0','accept':'text/html,application/xhtml+xml'}})}finally{clearTimeout(t)}}
+
+export async function fetchSpotracLeague(){
+ const urls=['https://www.spotrac.com/nfl/contracts/_/limit/1000','https://www.spotrac.com/nfl/contracts/1000','https://www.spotrac.com/nfl/contracts'];let best=null,last='';
+ for(const url of urls){try{const r=await fetchWithTimeout(url,25000);if(!r.ok){last=`HTTP ${r.status}`;continue}const rows=parseSpotracLeagueContracts(await r.text());if(!best||rows.length>best.rows.length)best={url,rows};if(rows.length>=500)return{url,rows};last=`parser ${rows.length}`;}catch(e){last=String(e.message||e)}}
+ if(best?.rows?.length>=75)return best;
+ throw new Error(`Spotrac league contracts failed: ${last}`);
+}
 export async function fetchSpotracTeam(abbr){const slug=TEAM_SLUGS[abbr];if(!slug)throw new Error(`No Spotrac slug for ${abbr}`);const urls=[`https://www.spotrac.com/nfl/${slug}/contracts/1000`,`https://www.spotrac.com/nfl/${slug}/contracts`];let last='';for(const url of urls){try{const r=await fetchWithTimeout(url);if(!r.ok){last=`HTTP ${r.status}`;continue}const rows=parseSpotracContracts(await r.text());if(rows.length>=15)return{url,rows};last=`parser ${rows.length}`;}catch(e){last=String(e.message||e)}}throw new Error(`Spotrac ${abbr} failed: ${last}`)}
-function mergeTeam(state,abbr,data,now){let matched=0,unmatched=0;for(const c of data.rows){const p=findCanonicalPlayer(state,abbr,c.name);if(!p){unmatched++;continue;}p.position=p.position||c.position;if(c.totalValue>0)p.totalValue=c.totalValue;if(c.apy>0)p.apy=c.apy;if(c.totalGuaranteed>0)p.totalGuaranteed=c.totalGuaranteed;if(c.guaranteedAtSigning>0)p.guaranteedAtSigning=c.guaranteedAtSigning;if(c.signedYear)p.signedYear=c.signedYear;if(c.contractEnd)p.contractEnd=c.contractEnd;if(c.contractYears)p.contractYears=c.contractYears;if(c.contractType)p.contractType=c.contractType;if(c.contractEnd)p.yearsLeft=Math.max(0,c.contractEnd-2026+1);p.contractStatus='verified';p.contractSource=[p.contractSource,'Spotrac'].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' + ');p.contractUpdatedAt=now;p.spotracSourceUrl=data.url;p.sourceChecks={...(p.sourceChecks||{}),Spotrac:true};matched++;}const t=state.teams.find(x=>x.abbr===abbr);if(t){t.contractsUpdatedAt=now;t.spotracContractCount=matched;t.spotracUnmatchedCount=unmatched;}return{abbr,matched,unmatched,players:data.rows.length,url:data.url}}
+
+function applyContract(p,c,now,url){
+ p.position=p.position||c.position;
+ // Spotrac is authoritative for contract terms.
+ if(c.totalValue>0)p.totalValue=c.totalValue;
+ if(c.apy>0)p.apy=c.apy;
+ if(c.totalGuaranteed>0||c.guaranteedAtSigning===0)p.totalGuaranteed=c.totalGuaranteed||0;
+ if(c.guaranteedAtSigning>=0)p.guaranteedAtSigning=c.guaranteedAtSigning||0;
+ if(c.contractStart)p.contractStart=c.contractStart;
+ if(c.signedYear)p.signedYear=c.signedYear;
+ if(c.contractEnd)p.contractEnd=c.contractEnd;
+ if(c.contractYears)p.contractYears=c.contractYears;
+ if(c.contractType)p.contractType=c.contractType;
+ const left=c.yearsLeft??yearsLeft(c.contractEnd??p.contractEnd);if(left!==null)p.yearsLeft=left;
+ if(p.contractEnd&&!p.freeAgentYear)p.freeAgentYear=Number(p.contractEnd)+1;
+ p.contractStatus='verified';p.contractSource=[p.contractSource,'Spotrac'].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' + ');p.contractUpdatedAt=now;p.spotracSourceUrl=url;p.sourceChecks={...(p.sourceChecks||{}),Spotrac:true};
+}
+function mergeLeagueRows(state,data,now){let matched=0,unmatched=0;const teamCounts={};for(const c of data.rows){const p=findCanonicalPlayer(state,c.team,c.name);if(!p){unmatched++;continue}applyContract(p,c,now,data.url);matched++;teamCounts[c.team]=(teamCounts[c.team]||0)+1;}for(const t of state.teams){t.spotracLeagueContractCount=teamCounts[t.abbr]||0;if(teamCounts[t.abbr])t.contractsUpdatedAt=now;}return{matched,unmatched,players:data.rows.length,teamCounts,url:data.url}}
+function mergeTeam(state,abbr,data,now){let matched=0,unmatched=0;for(const c of data.rows){const p=findCanonicalPlayer(state,abbr,c.name);if(!p){unmatched++;continue;}applyContract(p,c,now,data.url);matched++;}const t=state.teams.find(x=>x.abbr===abbr);if(t){t.contractsUpdatedAt=now;t.spotracContractCount=matched;t.spotracUnmatchedCount=unmatched;}return{abbr,matched,unmatched,players:data.rows.length,url:data.url}}
 async function mapLimit(items,limit,fn){let i=0;const out=[];async function worker(){while(i<items.length){const idx=i++;try{out[idx]=await fn(items[idx],idx)}catch(e){out[idx]={abbr:items[idx]?.abbr,error:String(e.message||e)}}}}await Promise.all(Array.from({length:Math.min(limit,items.length)},worker));return out}
-export async function syncSpotracLeague(state){const now=new Date().toISOString();const results=await mapLimit(state.teams,4,async t=>mergeTeam(state,t.abbr,await fetchSpotracTeam(t.abbr),now));const ok=results.filter(r=>!r.error),failed=results.filter(r=>r.error);state.lastSpotracSync=now;state.syncLog=state.syncLog||[];state.syncLog.unshift({timestamp:now,status:ok.length>=30?'ok':'partial',message:`Spotrac contract sync: ${ok.length}/32 teams, ${ok.reduce((n,r)=>n+(r.matched||0),0)} matched roster players, ${ok.reduce((n,r)=>n+(r.unmatched||0),0)} unmatched source rows.${failed.length?' Failed: '+failed.map(x=>x.abbr).join(', '):''}`});state.syncLog=state.syncLog.slice(0,300);return{source:'Spotrac',teams:ok.length,players:ok.reduce((n,r)=>n+(r.matched||0),0),results,failures:failed}}
+
+export async function syncSpotracLeague(state){
+ const now=new Date().toISOString();let leagueResult=null,leagueError='';
+ try{leagueResult=mergeLeagueRows(state,await fetchSpotracLeague(),now)}catch(e){leagueError=String(e.message||e)}
+ // Team pages remain a Spotrac fallback for players not present in the league table / default result limit.
+ const needsFallback=state.teams.filter(t=>(leagueResult?.teamCounts?.[t.abbr]||0)<20);
+ const results=await mapLimit(needsFallback,4,async t=>mergeTeam(state,t.abbr,await fetchSpotracTeam(t.abbr),now));
+ const ok=results.filter(r=>!r.error),failed=results.filter(r=>r.error);
+ // Backfill years-left everywhere we have an end year, including contracts synced before this release.
+ let yearsLeftBackfilled=0;for(const p of state.players){if(p.status==='removed')continue;if(p.contractEnd){const left=yearsLeft(p.contractEnd);if(left!==null&&p.yearsLeft!==left){p.yearsLeft=left;yearsLeftBackfilled++;}if(!p.freeAgentYear)p.freeAgentYear=Number(p.contractEnd)+1;}}
+ state.lastSpotracSync=now;state.syncLog=state.syncLog||[];
+ const leagueMatched=leagueResult?.matched||0,fallbackMatched=ok.reduce((n,r)=>n+(r.matched||0),0);
+ state.syncLog.unshift({timestamp:now,status:(leagueMatched+fallbackMatched)>=300?'ok':'partial',message:`Spotrac primary contract sync: league table ${leagueMatched} matched${leagueError?` (${leagueError})`:''}; team fallback ${fallbackMatched} matched across ${ok.length}/${needsFallback.length} teams; years-left backfilled ${yearsLeftBackfilled}.${failed.length?' Failed fallback: '+failed.map(x=>x.abbr).join(', '):''}`});state.syncLog=state.syncLog.slice(0,300);
+ return{source:'Spotrac',primary:'https://www.spotrac.com/nfl/contracts',league:leagueResult,leagueError,teams:32-failed.length,players:leagueMatched+fallbackMatched,results,failures:failed,yearsLeftBackfilled};
+}
