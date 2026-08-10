@@ -1,6 +1,8 @@
 import app from './src/server.js';
+import { attachFeatureRoutes } from './src/featureRoutes.js';
 
 const PORT = process.env.PORT || 3000;
+attachFeatureRoutes(app);
 app.use((await import('express')).default.static(new URL('./public', import.meta.url).pathname));
 
 app.listen(PORT, () => {
