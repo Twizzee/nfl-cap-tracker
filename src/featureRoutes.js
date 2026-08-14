@@ -1,7 +1,10 @@
 import { readState, writeState } from './lib/stateRepo.js';
 import { fetchHistoryYear, fetchDraftYear, fetchTeamYearOverview } from './featureData.js';
+import { fetchNflGames } from './games.js';
 
 const fresh=(stamp,hours=24)=>stamp&&Date.now()-new Date(stamp).getTime()<hours*3600000;
+const BASE='https://nfl-cap-tracker.vercel.app';
+const slug=s=>String(s||'').toLowerCase().replace(/[’']/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 
 export function attachFeatureRoutes(app){
   app.get('/api/history/:year',async(req,res)=>{try{
@@ -28,4 +31,8 @@ export function attachFeatureRoutes(app){
     if(!s.draftContracts[year]||!fresh(s.draftContracts[year].updatedAt,48)){s.draftContracts[year]=await fetchDraftYear(year);await writeState(s);}
     res.json({ok:true,...s.draftContracts[year]});
   }catch(e){res.status(502).json({ok:false,error:String(e.message||e)})}});
+
+  app.get('/api/games',async(_req,res)=>{try{res.set('Cache-Control','public, s-maxage=10, stale-while-revalidate=20');res.json({ok:true,...await fetchNflGames()})}catch(e){res.status(502).json({ok:false,error:String(e.message||e),games:[]})}});
+  app.get('/robots.txt',(_req,res)=>res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${BASE}/sitemap.xml\n`));
+  app.get('/sitemap.xml',async(_req,res)=>{try{const s=await readState(),players=(s.players||[]).filter(p=>p.status!=='removed'&&p.name&&p.team),urls=[BASE,BASE+'/games',...(s.teams||[]).map(t=>`${BASE}/team/${slug(t.name)}`),...players.map(p=>`${BASE}/player/${String(p.team).toLowerCase()}/${slug(p.name)}`)];res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...new Set(urls)].map(u=>`<url><loc>${u}</loc></url>`).join('')}</urlset>`)}catch(e){res.status(500).send('Sitemap unavailable')}});
 }
