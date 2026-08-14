@@ -17,9 +17,25 @@ function normalizePosition(position) {
   return position;
 }
 
+function normalizeContractSource(value, checks = {}) {
+  const found = new Set();
+  const text = String(value || '').toLowerCase();
+  if (checks.ESPN || /\bespn\b/.test(text)) found.add('ESPN');
+  if (checks.STM || /sticktothemodel|\bstm\b/.test(text)) found.add('STM');
+  if (checks.Spotrac || /spotrac/.test(text)) found.add('Spotrac');
+  if (checks.OTC || /over\s*the\s*cap|overthecap|\botc\b/.test(text)) found.add('OTC');
+  if (checks.PFN || /\bpfn\b|pro football network/.test(text)) found.add('PFN');
+  if (/manual/.test(text)) found.add('Manual');
+  return [...found].join(' + ');
+}
+
 function normalizeState(state) {
   if (Array.isArray(state?.players)) {
-    for (const player of state.players) player.position = normalizePosition(player.position);
+    for (const player of state.players) {
+      player.position = normalizePosition(player.position);
+      const compact = normalizeContractSource(player.contractSource, player.sourceChecks || {});
+      if (compact) player.contractSource = compact;
+    }
   }
   return state;
 }
